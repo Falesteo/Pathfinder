@@ -9,6 +9,7 @@ Grid::Grid(sf::Vector2u windowSize) {
     getMeasures(windowSize);
 
     // and create the grid accordingly
+    cells = {};
     for (int i = 0; i < gridSize.x; i++) {
         cells.emplace_back();
         for (int j = 0; j < gridSize.y; j++) {
@@ -16,19 +17,22 @@ Grid::Grid(sf::Vector2u windowSize) {
             cells[i].emplace_back(cell);
         }
     }
+
+    addStartAndEndCell();
 }
 
 void Grid::update(sf::RenderWindow &window) {
-    for (int i = 0; i < gridSize.x; i++)
-        for (int j = 0; j < gridSize.y; j++)
-            cells[i][j].update(window);
-
-    // reset the grid
+    // remove all the obstacles the grid
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
         for (int i = 0; i < gridSize.x; i++)
             for (int j = 0; j < gridSize.y; j++)
-                cells[i][j].setObstacle(false);
+                if (cells[i][j].state == "obstacle")
+                    cells[i][j].state = "free";
     }
+
+    for (int i = 0; i < gridSize.x; i++)
+        for (int j = 0; j < gridSize.y; j++)
+            cells[i][j].update(window);
 }
 
 void Grid::draw(sf::RenderWindow &window) {
@@ -55,4 +59,18 @@ void Grid::getMeasures(sf::Vector2u windowSize) {
     // saves window dimensions
     width = windowSize.x;
     height = windowSize.y;
+}
+
+void Grid::addStartAndEndCell() {
+    findFreeCell()->state = "start";
+    findFreeCell()->state = "end";
+}
+
+Cell* Grid::findFreeCell() {
+    int i = round(rand() % gridSize.x);
+    int j = round(rand() % gridSize.y);
+    if (cells[i][j].state == "free")
+        return &cells[i][j];
+    else
+        return findFreeCell();
 }

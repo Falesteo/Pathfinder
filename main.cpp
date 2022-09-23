@@ -35,7 +35,7 @@ int main() {
         }
 
         // Clearing the old frame and preparing for drawing the new one
-        window.clear(sf::Color(231, 252, 255));
+        window.clear(sf::Color::White);
 
         // project update and draw
         grid.update(window);

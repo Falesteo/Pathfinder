@@ -5,7 +5,6 @@
 #ifndef PATHFINDER_GRID_H
 #define PATHFINDER_GRID_H
 
-#include "SFML/Graphics.hpp"
 #include <cmath>
 
 #include "Cell.h"
@@ -20,6 +19,8 @@ public:
 
     void draw(sf::RenderWindow &window);
 
+    Cell* findFreeCell();
+
 private:
     std::vector<std::vector<Cell>> cells;
     sf::Vector2i gridSize;
@@ -29,6 +30,8 @@ private:
     void getMeasures(sf::Vector2u windowSize);
 
     bool is_equal(float a, float b) { return fabs(a - b) <= 0.01; }
+
+    void addStartAndEndCell();
 };
 
 

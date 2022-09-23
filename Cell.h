@@ -15,27 +15,19 @@ public:
 
     void draw(sf::RenderWindow &window);
 
-    bool getObstacle() const { return obstacle; }
-    void setObstacle(bool obstacle) { Cell::obstacle = obstacle; }
+    sf::Vector2f getPosition() const { return pos; }
+    void setPosition(sf::Vector2f pos) { Cell::pos = pos; }
 
-    bool getStart() const { return start; }
-    void setStart(bool start) { Cell::start = start; }
-
-    bool getEnd() const { return end; }
-    void setEnd(bool end) { Cell::end = end; }
+    std::string state;
 
 private:
+    sf::RectangleShape cellBackgroundRect;
+    sf::RectangleShape cellStateRect;
+
     // cell coordinates in the grid
     sf::Vector2i indexes;
     sf::Vector2f pos;
     float side;
-
-    // cell states
-    bool obstacle = false;
-    bool start = false;
-    bool end = false;
-
-    sf::RectangleShape cellRect, obstacleRect;
 };
 
 
