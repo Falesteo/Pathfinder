@@ -16,11 +16,10 @@ int main() {
     sf::Event event;
 
     // create the grid
-    Grid grid({window.getSize().x, window.getSize().y});
+    Grid grid({window.getSize().x, window.getSize().y}, 3);
 
     // Game loop
     while (window.isOpen()) {
-
         while (window.pollEvent(event)) {
             // closing the window and ending the game
             switch (event.type) {

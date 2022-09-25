@@ -5,7 +5,8 @@
 #ifndef PATHFINDER_CELL_H
 #define PATHFINDER_CELL_H
 
-#include "SFML/Graphics.hpp"
+#include "CellRect.h"
+#include <list>
 
 class Grid;
 class Cell {
@@ -23,20 +24,38 @@ public:
     float getPosY() const { return pos.y; }
     void setPosY(float posY) { Cell::pos.y = posY; }
 
-    std::string state = "unknown";
-    bool obstacle = false;
+    std::string getState() { return state; };
+    void setState(Grid &grid, std::string state);
 
-    void findNeighbours(Grid &grid);
-    void evaluateNeighbours();
+    bool obstacle = false;
+    bool start = false;
+    bool end = false;
+
+    void findNeighbours(Grid &grid, bool diagonals);
+    void evaluateNeighbours(Grid &grid);
 
     std::vector<Cell*> neighbours;
     float gCost, hCost, fCost;
-    Cell* parent;
+    Cell* parent = nullptr;
+    std::list<Cell*> children;
+
+    void removeChildren();
+
+    void reset();
 
 private:
+    std::string state = "unknown";
+
     sf::RectangleShape cellBackgroundRect;
-    sf::RectangleShape cellStateRect;
-    sf::RectangleShape cellObstacleRect;
+    // normal
+    CellRect cellAvailableRect = {sf::Color(38, 207, 238)};
+    CellRect cellEvaluatedRect = {sf::Color(3, 77, 133)};
+    CellRect cellPathRect = {sf::Color(232, 219, 20)};
+    CellRect cellObstacleRect = {sf::Color(0, 24, 27)};
+    CellRect cellStartRect = {sf::Color(94, 211, 0)};
+    CellRect cellEndRect = {sf::Color(211, 28, 0)};
+
+    sf::CircleShape parentArrow;
 
     // cell coordinates in the grid
     sf::Vector2i indexes;

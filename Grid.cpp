@@ -4,20 +4,44 @@
 
 #include "Grid.h"
 
-Grid::Grid(sf::Vector2u windowSize) {
+Grid::Grid(sf::Vector2u windowSize, int scale) {
     // get window dimensions
-    getMeasures(windowSize);
+    getGridMeasures(windowSize, scale);
 
-    // and create the grid accordingly
-    createGrid();
+    // and initialize cells matrix accordingly
+    initializeGrid();
+
+    // calculate cells neighbours
+    diagonals = false;
     setCellsNeighbours();
 
-    addObstacles(0.4);
+    // add obstacles to the grid
+    obstacleChance = 0.3;
+    addObstacles(obstacleChance);
+
+    // add start and end cell
     addStartAndEndCell();
-    availableCells.push_back(start);
+
+    speed = 1;
 }
 
-void Grid::createGrid() {
+void Grid::getGridMeasures(sf::Vector2u windowSize, int scale) {
+    float aspectRatio = float(windowSize.x) / float(windowSize.y);
+
+    // calculate the game unit based on the screen resolution
+    if (is_equal(aspectRatio, 16.0 / 9.0) ||
+        is_equal(aspectRatio, 16.0 / 10.0) ||
+        is_equal(aspectRatio, 4.0 / 3.0))
+        gridSize = {16 * scale, 9 * scale};
+    else if (is_equal(aspectRatio, 5.0 / 4.0))
+        gridSize = {15 * scale, 12 * scale};
+    else if (is_equal(aspectRatio, 21.0 / 9.0))
+        gridSize = {21 * scale, 9 * scale};
+
+    side = floor(windowSize.x / gridSize.x);
+}
+
+void Grid::initializeGrid() {
     cells = {};
     for (int i = 0; i < gridSize.x; i++) {
         cells.emplace_back();
@@ -33,7 +57,7 @@ void Grid::createGrid() {
 void Grid::setCellsNeighbours() {
     for (int i = 0; i < size(cells); i++)
         for (int j = 0; j < size(cells[i]); j++)
-            cells[i][j].findNeighbours(*this);
+            cells[i][j].findNeighbours(*this, diagonals);
 }
 
 void Grid::update(sf::RenderWindow &window) {
@@ -42,12 +66,11 @@ void Grid::update(sf::RenderWindow &window) {
         for (int i = 0; i < gridSize.x; i++)
             for (int j = 0; j < gridSize.y; j++)
                 cells[i][j].obstacle = false;
-    } else if (sf::Keyboard::isKeyPressed(sf::Keyboard::N)) {
-        createGrid();
+    } else if (sf::Keyboard::isKeyPressed(sf::Keyboard::N) && pathFound) {
+        resetGrid();
         setCellsNeighbours();
-        addObstacles(0.4);
+        addObstacles(obstacleChance);
         addStartAndEndCell();
-        availableCells.push_back(start);
     }
 
     for (int i = 0; i < gridSize.x; i++)
@@ -63,22 +86,6 @@ void Grid::draw(sf::RenderWindow &window) {
             cells[i][j].draw(window);
 }
 
-void Grid::getMeasures(sf::Vector2u windowSize) {
-    float aspectRatio = float(windowSize.x) / float(windowSize.y);
-
-    // calculate the game unit based on the screen resolution
-    if (is_equal(aspectRatio, 16.0 / 9.0) ||
-        is_equal(aspectRatio, 16.0 / 10.0) ||
-        is_equal(aspectRatio, 4.0 / 3.0))
-        gridSize = {48, 27};
-    else if (is_equal(aspectRatio, 5.0 / 4.0))
-        gridSize = {30, 24};
-    else if (is_equal(aspectRatio, 21.0 / 9.0))
-        gridSize = {42, 18};
-
-    side = floor(windowSize.x / gridSize.x);
-}
-
 void Grid::addObstacles(float obstacleChance) {
     for (int i = 0; i < gridSize.x; i++)
         for (int j = 0; j < gridSize.y; j++)
@@ -89,16 +96,17 @@ void Grid::addObstacles(float obstacleChance) {
 void Grid::addStartAndEndCell() {
     // set the start cell
     start = findFreeCell();
-    start->state = "start";
+    start->start = true;
 
     // set the start cell
     end = findFreeCell();
-    end->state = "end";
+    end->end = true;
 
     // calculate start cell costs
+    start->setState(*this, "available");
     start->gCost = 0;
     start->hCost = sqrt(pow(start->getPosX() - end->getPosX(), 2) + pow(start->getPosY() - end->getPosY(), 2));
-    start->fCost = start->gCost + start->fCost;
+    start->fCost = start->gCost + start->hCost;
 }
 
 Cell* Grid::findFreeCell() {
@@ -113,84 +121,49 @@ Cell* Grid::findFreeCell() {
 void Grid::findPath() {
     // and start the loop
     if (!pathFound) {
-        for (int i = 0; i < 1; i++) {
+        for (int s = 0; s < speed; s++) {
             current = findLowestCost(availableCells);
-            availableCells.remove(current);
-            evaluatedCells.push_back(current);
-            if (current->state != "start" && current->state != "end")
-                current->state = "evaluated";
-
-            // if target has been found exit from the loop
-            if (current == end)
+            if (current == nullptr) {
+                pathFound = true;
+                return;
+            } else if (current == end) {
                 backtrackPath();
-
-            // for every adjacent cell to current
-            for (auto neighbour: current->neighbours) {
-                // if neighbour is not traversable or is already evaluated
-                if (neighbour->obstacle ||
-                    std::find(evaluatedCells.begin(), evaluatedCells.end(), neighbour) != evaluatedCells.end())
-                    // skip to the next neighbour
-                    continue;
-
-                // if new path through the current cell is shorter or neighbour has not been considered
-                if (current->gCost + sqrt(pow(current->getPosX() - neighbour->getPosX(), 2) +
-                                          pow(current->getPosY() - neighbour->getPosY(), 2)) < neighbour->gCost ||
-                    std::find(availableCells.begin(), availableCells.end(), neighbour) == availableCells.end()) {
-                    // update the g cost (distance from the start cell) and the neighbour parent and evaluate h and f costs
-                    neighbour->gCost = current->gCost + sqrt(pow(current->getPosX() - neighbour->getPosX(), 2) +
-                                                             pow(current->getPosY() - neighbour->getPosY(), 2));
-                    neighbour->hCost = sqrt(pow(end->getPosX() - neighbour->getPosX(), 2) +
-                                            pow(end->getPosY() - neighbour->getPosY(), 2));
-                    neighbour->fCost = neighbour->gCost + neighbour->hCost;
-
-                    // set parent to current
-                    neighbour->parent = current;
-
-                    // and, if it hasn't been considered, add the neighbours to the considered cells list
-                    if (std::find(availableCells.begin(), availableCells.end(), neighbour) == availableCells.end()) {
-                        availableCells.push_back(neighbour);
-                        if (neighbour->state != "start" && neighbour->state != "end")
-                            neighbour->state = "available";
-                    }
-                }
+                return;
             }
+
+            current->setState(*this, "evaluated");
+
+            current->evaluateNeighbours(*this);
+        }
+    }
+}
+
+void Grid::resetGrid() {
+    for (int i = 0; i < gridSize.x; i++) {
+        for (int j = 0; j < gridSize.y; j++) {
+            cells[i][j].reset();
+            cells[i][j].setState(*this, "unknown");
         }
     }
 
-    if (size(availableCells) == 0)
-        pathFound = true;
-}
-
-void Grid::resetPath() {
     availableCells = {};
     evaluatedCells = {};
     pathCells = {};
 
-    for (int i = 0; i < size(cells); i++) {
-        for (int j = 0; j < size(cells[i]); j++) {
-            cells[i][j].gCost = 0;
-            cells[i][j].hCost = 0;
-            cells[i][j].hCost = 0;
-
-            if (cells[i][j].state != "start" && cells[i][j].state != "end")
-                cells[i][j].state = "unknown";
-        }
-    }
+    pathFound = false;
 }
 
 Cell* Grid::findLowestCost(std::list<Cell*> availableCells) {
-    float lowestCost = 9999;
-    Cell* lowestCostCell;
+    float lowestCost = 9999.9f;
+    Cell* lowestCostCell = nullptr;
 
     for (auto cell = availableCells.begin(); cell != availableCells.end(); cell++) {
         if ((*cell)->fCost < lowestCost) {
             lowestCost = (*cell)->fCost;
             lowestCostCell = *cell;
-        } else if ((*cell)->fCost == lowestCost) {
-            if ((*cell)->hCost < lowestCostCell->hCost) {
-                lowestCost = (*cell)->fCost;
-                lowestCostCell = *cell;
-            }
+        } else if ((*cell)->fCost == lowestCost && (*cell)->hCost < lowestCostCell->hCost) {
+            lowestCost = (*cell)->fCost;
+            lowestCostCell = *cell;
         }
     }
 
@@ -201,10 +174,29 @@ void Grid::backtrackPath() {
     Cell* currentPathCell = end;
     while (currentPathCell != start) {
         pathCells.push_back(currentPathCell);
-        if (currentPathCell->state != "start" && currentPathCell->state != "end")
-            currentPathCell->state = "path";
+        if (currentPathCell->getState() != "start" && currentPathCell->getState() != "end")
+            currentPathCell->setState(*this, "path");
+
         currentPathCell = currentPathCell->parent;
     }
 
     pathFound = true;
 }
+
+void Grid::cutPath(Cell* deletedCell) {
+    deletedCell->setState(*this, "unknown");
+    deletedCell->removeChildren();
+
+    int i;
+    for (i = 1; pathCells[i] != deletedCell; i++)
+        pathCells[i]->setState(*this, "unknown");
+    for (i = i; i < size(pathCells); i++)
+        pathCells[i]->setState(*this, "evaluated");
+
+    pathCells = {};
+    for (auto cell : evaluatedCells)
+        cell->evaluateNeighbours(*this);
+
+    pathFound = false;
+}
+
