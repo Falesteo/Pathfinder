@@ -29,11 +29,10 @@ Cell::Cell(sf::Vector2i indexes, float side) : indexes(indexes), side(side) {
 void Cell::update(Grid &grid, sf::RenderWindow &window) {
     // add/remove obstacles
     if (cellBackgroundRect.getGlobalBounds().contains(window.mapPixelToCoords(sf::Mouse::getPosition(window)))) {
-        if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && (state != "start" && state != "end")) {
+        if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && (!start && !end)) {
             obstacle = true;
             // if you block the path all the path cells after the one blocked have to be removed
-            if (state == "path")
-                grid.cutPath(this);
+            setState(grid, "unknown");
         } else if (sf::Mouse::isButtonPressed(sf::Mouse::Right) && obstacle)
             obstacle = false;
     }
@@ -47,13 +46,13 @@ void Cell::update(Grid &grid, sf::RenderWindow &window) {
 
     if (parent != nullptr) {
         if (parent->getPosX() - pos.x == side)
-            parentArrow.setPosition(pos.x + side / 2 + side / 4, pos.y + side / 2);
+            parentArrow.setPosition(pos.x + side / 2 + side / 3, pos.y + side / 2);
         if (parent->getPosX() - pos.x == -side)
-            parentArrow.setPosition(pos.x + side / 2 - side / 4, pos.y + side / 2);
+            parentArrow.setPosition(pos.x + side / 2 - side / 3, pos.y + side / 2);
         if (parent->getPosY() - pos.y == side)
-            parentArrow.setPosition(pos.x + side / 2, pos.y + side / 2 + side / 4);
+            parentArrow.setPosition(pos.x + side / 2, pos.y + side / 2 + side / 3);
         if (parent->getPosY() - pos.y == -side)
-            parentArrow.setPosition(pos.x + side / 2, pos.y + side / 2 - side / 4);
+            parentArrow.setPosition(pos.x + side / 2, pos.y + side / 2 - side / 3);
     }
 }
 
@@ -97,85 +96,126 @@ void Cell::findNeighbours(Grid &grid, bool diagonals) {
 void Cell::evaluateNeighbours(Grid &grid) {
     // for every adjacent cell to current
     for (auto neighbour: neighbours) {
-        // if neighbour is not traversable or is already evaluated
-        if (neighbour->obstacle || std::find(grid.evaluatedCells.begin(), grid.evaluatedCells.end(), neighbour) != grid.evaluatedCells.end())
-            // skip to the next neighbour
-            continue;
+        // if neighbour is not traversable or is already evaluated skip to the next neighbour
+        if (neighbour->obstacle || neighbour->state == "evaluated") {}
 
-        // if new path through the current cell is shorter or neighbour has not been considered
-        if (gCost + sqrt(pow(getPosX() - neighbour->getPosX(), 2) +
-                                  pow(getPosY() - neighbour->getPosY(), 2)) < neighbour->gCost ||
-            std::find(grid.availableCells.begin(), grid.availableCells.end(), neighbour) == grid.availableCells.end()) {
+        // else if new path through the current cell is shorter or neighbour has not been considered
+        else if ((gCost + sqrt(pow(getPosX() - neighbour->getPosX(), 2) + pow(getPosY() - neighbour->getPosY(), 2)) <
+                 neighbour->gCost && neighbour->state == "available") || neighbour->state == "unknown") {
             // update the g cost (distance from the start cell) and the neighbour parent and evaluate h and f costs
             neighbour->gCost = gCost + sqrt(pow(getPosX() - neighbour->getPosX(), 2) +
-                                                     pow(getPosY() - neighbour->getPosY(), 2));
+                                            pow(getPosY() - neighbour->getPosY(), 2));
             neighbour->hCost = sqrt(pow(grid.end->getPosX() - neighbour->getPosX(), 2) +
                                     pow(grid.end->getPosY() - neighbour->getPosY(), 2));
             neighbour->fCost = neighbour->gCost + neighbour->hCost;
 
-            // set parent to current
+            // if the neighbour has already a parent, remove it from its parent list of children
+            if (neighbour->parent != nullptr)
+                neighbour->parent->children.remove(neighbour);
+
+            // and set its new parent to current
             neighbour->parent = this;
             children.push_back(neighbour);
 
-            // and, if it hasn't been considered, add the neighbours to the considered cells list
-            if (std::find(grid.availableCells.begin(), grid.availableCells.end(), neighbour) == grid.availableCells.end()) {
-                if (neighbour->state != "start" && neighbour->state != "end")
-                    neighbour->setState(grid, "available");
-            }
+            // and, if it's a not yet considered cell, add the neighbour to the available cells list
+            if (neighbour->state == "unknown")
+                neighbour->setState(grid, "available");
         }
     }
 }
 
-void Cell::removeChildren() {
-    gCost = 999;
-    hCost = 999;
-    fCost = 999;
-    for (auto child : children) {
-        if (child->state != "end")
-            child->state = "unknown";
-        child->parent = nullptr;
-        child->removeChildren();
-    }
-}
-
 void Cell::setState(Grid &grid, std::string state) {
-    if (state == "path") {
-        if (this->state == "evaluated") {
-            grid.evaluatedCells.remove(this);
-        } else if (this->state == "available")
-            grid.availableCells.remove(this);
-    }
-
     if (state == "available") {
         if (this->state == "evaluated") {
             grid.evaluatedCells.remove(this);
-            grid.availableCells.push_back(this);
-        } else if (this->state == "unknown")
-            grid.availableCells.push_back(this);
+        } else if (this->state == "path") {
+            auto it = find(grid.pathCells.begin(), grid.pathCells.end(), this);
+            if (it != grid.pathCells.end())
+                grid.pathCells.erase(it);
+        }
+
+        grid.availableCells.push_back(this);
     }
 
-    if (state == "evaluated") {
+    else if (state == "evaluated") {
         if (this->state == "available") {
             grid.availableCells.remove(this);
-            grid.evaluatedCells.push_back(this);
-        } else if (this->state == "unknown")
-            grid.evaluatedCells.push_back(this);
+            evaluateNeighbours(grid);
+        } else if (this->state == "path") {
+            auto it = find(grid.pathCells.begin(), grid.pathCells.end(), this);
+            if (it != grid.pathCells.end())
+                grid.pathCells.erase(it);
+        }
+
+        grid.evaluatedCells.push_back(this);
     }
 
-    if (state == "unknown") {
-        grid.availableCells.remove(this);
-        grid.evaluatedCells.remove(this);
+    else if (state == "path") {
+        if (this->state == "evaluated")
+            grid.evaluatedCells.remove(this);
+        else if (this->state == "available")
+            grid.availableCells.remove(this);
+
+        grid.pathCells.push_back(this);
+    }
+
+    else if (state == "unknown") {
+        // reset cell
+        for (auto child: children)
+            child->reset(grid);
+
+        children.clear();
+
+        // remove this cell from the of available, evaluated and path cells lists
+        if (this->state == "available")
+            grid.availableCells.remove(this);
+        else if (this->state == "evaluated")
+            grid.evaluatedCells.remove(this);
+        else if (this->state == "path") {
+            for (int i = size(grid.pathCells) - 1; i >= 0; i--)
+                grid.pathCells[i]->setState(grid, "evaluated");
+            grid.pathFound = false;
+        }
+
+        // reset all the values
+        gCost = grid.windowDiagonal;
+        hCost = grid.windowDiagonal;
+        fCost = gCost + hCost;
+
+        parent = nullptr;
+
+        if (this->state == "path" || this->state == "evaluated") {
+            for (auto cell: grid.evaluatedCells)
+                cell->evaluateNeighbours(grid);
+        }
     }
 
     this->state = state;
 }
 
-void Cell::reset() {
-    gCost = 999;
-    hCost = 999;
-    fCost = 999;
+void Cell::reset(Grid &grid) {
+    for (auto child: children)
+        child->reset(grid);
+
+    children.clear();
+
+    // remove this cell from the of available, evaluated and path cells lists
+    if (this->state == "available")
+        grid.availableCells.remove(this);
+    else if (this->state == "evaluated")
+        grid.evaluatedCells.remove(this);
+    else if (this->state == "path") {
+        auto it = find(grid.pathCells.begin(), grid.pathCells.end(), this);
+        if (it != grid.pathCells.end())
+            grid.pathCells.erase(it);
+    }
+
+    this->state = "unknown";
+
+    // reset all the values
+    gCost = grid.windowDiagonal;
+    hCost = grid.windowDiagonal;
+    fCost = gCost + hCost;
+
     parent = nullptr;
-    obstacle = false;
-    start = false;
-    end = false;
 }

@@ -14,7 +14,8 @@ using namespace std;
 
 class Grid {
 public:
-    Grid(sf::Vector2u windowSize, int scale);
+    Grid(sf::Vector2u windowSize);
+    ~Grid() = default;
 
     void update(sf::RenderWindow &window);
 
@@ -29,16 +30,18 @@ public:
 
     void findPath();
 
-    void cutPath(Cell* lastCorrectCell);
-
     bool pathFound = false;
+    bool newAvailableCells = true;
+
     std::list<Cell*> availableCells = {};
     std::list<Cell*> evaluatedCells = {};
     std::vector<Cell*> pathCells = {};
 
-    Cell* start;
-    Cell* end;
-    Cell* current;
+    Cell* start = nullptr;
+    Cell* end = nullptr;
+    Cell* current = nullptr;
+
+    float windowDiagonal;
 
 private:
     sf::Vector2i gridSize;
@@ -59,6 +62,7 @@ private:
 
     void addStartAndEndCell();
 
+    int scale;
     bool diagonals;
     int speed;
 

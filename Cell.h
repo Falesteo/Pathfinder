@@ -12,6 +12,7 @@ class Grid;
 class Cell {
 public:
     Cell(sf::Vector2i indexes, float side);
+    ~Cell() = default;
 
     void update(Grid &grid, sf::RenderWindow &window);
 
@@ -35,13 +36,14 @@ public:
     void evaluateNeighbours(Grid &grid);
 
     std::vector<Cell*> neighbours;
-    float gCost, hCost, fCost;
+    float gCost = 999;
+    float hCost = 999;
+    float fCost = 999;
     Cell* parent = nullptr;
     std::list<Cell*> children;
 
-    void removeChildren();
-
-    void reset();
+    void reset(Grid &grid);
+    void removeChildren(Grid &grid);
 
 private:
     std::string state = "unknown";

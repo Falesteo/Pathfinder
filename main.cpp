@@ -16,7 +16,7 @@ int main() {
     sf::Event event;
 
     // create the grid
-    Grid grid({window.getSize().x, window.getSize().y}, 3);
+    Grid grid({window.getSize().x, window.getSize().y});
 
     // Game loop
     while (window.isOpen()) {

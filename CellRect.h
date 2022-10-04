@@ -11,6 +11,7 @@
 class CellRect {
 public:
     CellRect(sf::Color color);
+    ~CellRect() = default;
 
     void update(bool active, float side);
 

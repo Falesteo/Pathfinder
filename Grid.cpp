@@ -4,8 +4,9 @@
 
 #include "Grid.h"
 
-Grid::Grid(sf::Vector2u windowSize, int scale) {
+Grid::Grid(sf::Vector2u windowSize) {
     // get window dimensions
+    scale = 3;
     getGridMeasures(windowSize, scale);
 
     // and initialize cells matrix accordingly
@@ -39,6 +40,8 @@ void Grid::getGridMeasures(sf::Vector2u windowSize, int scale) {
         gridSize = {21 * scale, 9 * scale};
 
     side = floor(windowSize.x / gridSize.x);
+
+    windowDiagonal = sqrtf(pow(windowSize.x, 2) + pow(windowSize.y, 2));
 }
 
 void Grid::initializeGrid() {
@@ -50,40 +53,12 @@ void Grid::initializeGrid() {
             cells[i].emplace_back(cell);
         }
     }
-
-    pathFound = false;
 }
 
 void Grid::setCellsNeighbours() {
     for (int i = 0; i < size(cells); i++)
         for (int j = 0; j < size(cells[i]); j++)
             cells[i][j].findNeighbours(*this, diagonals);
-}
-
-void Grid::update(sf::RenderWindow &window) {
-    // remove all the obstacles the grid
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
-        for (int i = 0; i < gridSize.x; i++)
-            for (int j = 0; j < gridSize.y; j++)
-                cells[i][j].obstacle = false;
-    } else if (sf::Keyboard::isKeyPressed(sf::Keyboard::N) && pathFound) {
-        resetGrid();
-        setCellsNeighbours();
-        addObstacles(obstacleChance);
-        addStartAndEndCell();
-    }
-
-    for (int i = 0; i < gridSize.x; i++)
-        for (int j = 0; j < gridSize.y; j++)
-            cells[i][j].update(*this, window);
-
-    findPath();
-}
-
-void Grid::draw(sf::RenderWindow &window) {
-    for (int i = 0; i < gridSize.x; i++)
-        for (int j = 0; j < gridSize.y; j++)
-            cells[i][j].draw(window);
 }
 
 void Grid::addObstacles(float obstacleChance) {
@@ -107,6 +82,9 @@ void Grid::addStartAndEndCell() {
     start->gCost = 0;
     start->hCost = sqrt(pow(start->getPosX() - end->getPosX(), 2) + pow(start->getPosY() - end->getPosY(), 2));
     start->fCost = start->gCost + start->hCost;
+
+    pathFound = false;
+    newAvailableCells = true;
 }
 
 Cell* Grid::findFreeCell() {
@@ -118,43 +96,58 @@ Cell* Grid::findFreeCell() {
         return findFreeCell();
 }
 
+void Grid::update(sf::RenderWindow &window) {
+    // remove all the obstacles the grid
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
+        for (int i = 0; i < gridSize.x; i++)
+            for (int j = 0; j < gridSize.y; j++)
+                cells[i][j].obstacle = false;
+    } else if (sf::Keyboard::isKeyPressed(sf::Keyboard::N) && (pathFound || !newAvailableCells)) {
+        resetGrid();
+        addObstacles(obstacleChance);
+        addStartAndEndCell();
+    }
+
+    for (int i = 0; i < gridSize.x; i++)
+        for (int j = 0; j < gridSize.y; j++)
+            cells[i][j].update(*this, window);
+
+    findPath();
+}
+
+void Grid::draw(sf::RenderWindow &window) {
+    for (int i = 0; i < gridSize.x; i++)
+        for (int j = 0; j < gridSize.y; j++)
+            cells[i][j].draw(window);
+}
+
 void Grid::findPath() {
-    // and start the loop
-    if (!pathFound) {
+    // if the path has not been found yet and there's more cells available to be evaluated
+    if (!pathFound && newAvailableCells) {
         for (int s = 0; s < speed; s++) {
+            // set the available cell with the lowest cost to the current cell
             current = findLowestCost(availableCells);
+
+            // if there's not a new cell to be evaluated it means that there's no more available cell
             if (current == nullptr) {
-                pathFound = true;
+                newAvailableCells = false;
                 return;
-            } else if (current == end) {
+            }
+
+            // if the new cell is the goal cell go back on the path to the start cell
+            else if (current == end) {
                 backtrackPath();
                 return;
             }
 
+            // if the new cell is a normal cell, evaluate it and it's neighbours
             current->setState(*this, "evaluated");
-
-            current->evaluateNeighbours(*this);
         }
     }
-}
-
-void Grid::resetGrid() {
-    for (int i = 0; i < gridSize.x; i++) {
-        for (int j = 0; j < gridSize.y; j++) {
-            cells[i][j].reset();
-            cells[i][j].setState(*this, "unknown");
-        }
-    }
-
-    availableCells = {};
-    evaluatedCells = {};
-    pathCells = {};
-
-    pathFound = false;
 }
 
 Cell* Grid::findLowestCost(std::list<Cell*> availableCells) {
-    float lowestCost = 9999.9f;
+    float lowestCost = RAND_MAX;
     Cell* lowestCostCell = nullptr;
 
     for (auto cell = availableCells.begin(); cell != availableCells.end(); cell++) {
@@ -173,30 +166,25 @@ Cell* Grid::findLowestCost(std::list<Cell*> availableCells) {
 void Grid::backtrackPath() {
     Cell* currentPathCell = end;
     while (currentPathCell != start) {
-        pathCells.push_back(currentPathCell);
-        if (currentPathCell->getState() != "start" && currentPathCell->getState() != "end")
-            currentPathCell->setState(*this, "path");
-
+        currentPathCell->setState(*this, "path");
         currentPathCell = currentPathCell->parent;
     }
 
     pathFound = true;
 }
 
-void Grid::cutPath(Cell* deletedCell) {
-    deletedCell->setState(*this, "unknown");
-    deletedCell->removeChildren();
+void Grid::resetGrid() {
+    // reset all cells
+    for (int i = 0; i < gridSize.x; i++) {
+        for (int j = 0; j < gridSize.y; j++) {
+            // make it an empty cell
+            cells[i][j].obstacle = false;
+            cells[i][j].start = false;
+            cells[i][j].end = false;
+        }
+    }
 
-    int i;
-    for (i = 1; pathCells[i] != deletedCell; i++)
-        pathCells[i]->setState(*this, "unknown");
-    for (i = i; i < size(pathCells); i++)
-        pathCells[i]->setState(*this, "evaluated");
-
-    pathCells = {};
-    for (auto cell : evaluatedCells)
-        cell->evaluateNeighbours(*this);
+    start->setState(*this, "unknown");
 
     pathFound = false;
 }
-
